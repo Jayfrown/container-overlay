@@ -1,0 +1,51 @@
+##
+#  _containers
+#  functions for cor (container/overlay)
+  
+#  Copyright 2016 Jeroen <Jayfrown @ github.com>
+
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#  
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+#  MA 02110-1301, USA.
+
+
+# rebuild base rootfs
+rebuild-base() {
+	gMsg "(re)building base"
+
+	fingerPrint=$(${lxcBin} image info base 2>/dev/null) || err "image not found: base"
+	fingerPrint=$(echo -n ${fingerPrint}|grep -i "finger"|awk '{print $2}')
+
+	gMsg "using source image $(magenta ${fingerPrint})"
+	gMsg "extracting rootfs .."
+	${lxcBin} launch local:base local:base || err "could not launch base"
+}
+
+new-container() {
+	[[ -z ${containerName} ]] && containerName=${1}
+
+	gMsg "creating container $(magenta ${containerName})"
+	${lxcBin} copy local:empty local:${containerName} || err "could not copy 'empty'->'${containerName}'"
+	sudo mkdir -p ${containerBase}/${containerName}/{work,persistent_storage}
+}
+
+delete-container() {
+	[[ -z ${containerName} ]] && containerName=${1}
+	[[ -z ${containerName} ]] && err "expected a container name"
+
+	sudo umount ${containerBase}/${containerName}/rootfs && gMsg "umount successful"
+	mount|grep -q "${containerName}" && err "overlay still mounted but umount succeeded - investigate !!"
+	${lxcBin} delete ${containerName} ${2} || err "consider passing --force"
+	gMsg "deleted container ${containerName}"
+}

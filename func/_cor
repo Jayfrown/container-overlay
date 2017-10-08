@@ -1,0 +1,157 @@
+##
+#  _cor
+#  functions for cor (container/overlay)
+  
+#  Copyright 2016 Jeroen <Jayfrown @ github.com>
+
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#  
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+#  MA 02110-1301, USA.
+
+# stateful tests
+ready() {
+	[[ -x ${lxcBin} ]] || err "cannot exec lxd client: ${lxcBin}"
+	[[ -d ${lxdBase} ]] || err "cannot find lxd basedir: ${lxdBase}"
+	[[ -d ${containerBase} ]] || err "cannot find container basedir: ${containerBase}"
+
+	return 0
+}
+
+base() {
+
+	[[ -d ${lower_rootfs} ]] || err "no base, consider init"
+
+	[[ -d ${lower_rootfs}/bin && \
+	   -d ${lower_rootfs}/usr && \
+	   -d ${lower_rootfs}/etc && \
+	   -d ${lower_rootfs}/lib && \
+	   -d ${lower_rootfs}/var ]] || err "empty base, consider rebuild"
+
+	return 0
+}
+
+container-exists() {
+	[[ -z ${containerName} ]] && containerName=${1}
+	[[ -z ${containerName} ]] && err "expected a container name"
+
+	[[ -d ${containerBase}/${containerName}/ ]]
+
+	# return exit code for test
+	#	container-exists && #if-exists
+	#	container-exists || #if-not
+	return $?
+}
+
+
+# usage, etc
+show-helpmsg() {
+
+	if [[ -z ${1} ]]; then
+		gMsg "usage: ${prog} help [$(magenta topic)]"
+		gMsg "available topics:"
+
+		cat <<- EOF >/dev/stdout 2>&1
+
+		  create   init
+		  delete   rebuild
+		  remount  usage
+
+		EOF
+
+		bMsg "what do you need help with?"
+		exit
+	fi
+
+	case ${1,,} in
+		usage)
+			gMsg "usage: ${prog} action [$(magenta arg$(cdflt \()$(magenta s)$(cdflt \)))]"
+			gMsg "available actions:"
+
+			cat <<- EOF >/dev/stdout 2>&1
+
+			  help [$(magenta topic)]        - show help message
+
+			 $(blue overlay environment):
+			  init		      - initialize environment
+			  rebuild  	      - build base container
+			  remount [$(magenta name)$(cdflt \|)$(magenta all)]  - mount given overlay(s)
+
+			 $(blue manipulate containers):
+			  create [$(magenta name)]       - new container, name supplied or generated
+			  delete  $(magenta name)        - delete given container
+			  clone   $(magenta name) [$(magenta name)] - clone given container (symlinked storage)
+			  copy    $(magenta name) [$(magenta name)] - copy given container & storage
+
+			 $(blue container interaction):
+			  shell $(magenta name)          - spawn rootshell on given container
+
+			EOF
+			;;
+
+		help)
+			bMsg "you'd think they'd learn"
+			;;
+
+		init)
+			gMsg "usage: ${prog} init"
+			gMsg "$(magenta Container$(cdflt /)$(magenta Overlay)) leverages overlayfs with lxd containers"
+			gMsg "enabling thousands of containers to share a single rootfs"
+			echo
+			gMsg "$(magenta cor) builds a $(magenta base) container and re-uses its rootfs as"
+			gMsg "the 'lower' directory, sharing it with all containers"
+			gMsg "built by $(magenta cor create)"
+			echo
+
+			gMsg "these containers write their respective changes to a"
+			gMsg "configurable 'upper' directory"
+			echo
+			gMsg "overlayfs ensures each container uses the same file"
+			gMsg "in-memory, eliminating redundancies in storage and RAM"
+			echo
+			gMsg "updating the $(magenta base) container therefor instantly updates"
+			gMsg "every overlain container"
+			;;
+
+		c|create)
+			gMsg "usage: ${prog} create [$(magenta containerName)]"
+			gMsg "spawns a new container using a generated or supplied name"
+			;;
+
+		d|del|rm|delete)
+			gMsg "usage: ${prog} delete $(magenta containerName)"
+			gMsg "deletes a given container and its persistent storage"
+			;;
+
+		remount)
+			gMsg "usage: ${prog} remount [$(magenta containerName)]"
+			gMsg "ensures the following: "
+			gMsg "	- clean on-disk rootfs"
+			gMsg "	- overlay mounted"
+			echo
+			gMsg "either for given $(magenta containerName) or all containers"
+			gMsg "except those part of overlay structure"
+			;;
+
+		rebuild)
+			gMsg "usage: ${prog} rebuild"
+			gMsg "ensures base rootfs is non-empty"
+			;;
+
+		*)
+			bMsg "invalid action: ${1}"
+			bMsg "usage: ${prog} help [$(magenta topic)]"
+			;;
+	esac
+
+}

@@ -1,0 +1,160 @@
+#!/bin/bash
+
+##
+#  cor - container/overlay - at lack of a better name
+#  Copyright 2016 Jeroen <Jayfrown @ github.com>
+
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#  
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+#  MA 02110-1301, USA.
+
+
+# include functions
+include_dir="${BASH_SOURCE%/*}/func"
+. "${include_dir}/_main"
+. "${include_dir}/_cor"
+
+# main()
+[[ -z $1 ]] && (
+gMsg "$(magenta Container$(cdflt /)$(magenta Overlay))"
+gMsg "leverage overlayfs with lxd containers"
+echo )
+
+# action
+case ${1,,} in
+
+	# show a help message
+	h|i|help|info)
+		show-helpmsg ${2}
+		;;
+
+	# initialize environment
+	init)
+		. ${include_dir}/_init
+		. cor.cfg
+		ready && init
+		;;
+
+	# pop a shell in given container
+	s|shell)
+		[[ -z ${2} ]] && err "expected a container name"
+		containerName=${2}
+		. cor.cfg
+
+		${lxcBin} exec ${containerName} /bin/bash
+		;;
+
+
+	# rebuild base rootfs (lower)
+	rebuild)
+		. ${include_dir}/_containers
+		. cor.cfg
+
+		container-exists "empty" || err "looks like you need to init instead"
+		ready && rebuild-base
+		;;
+
+	# remount overlayfs for container
+	remount)
+		. ${include_dir}/_filesystem
+		. cor.cfg
+
+		# remount given container, or all
+		[[ -z ${2} ]] && err "please specify a container"
+		[[ ${2} == "all" ]]  && ready && remount-all
+
+		# remount single container
+		containerName="${2}"
+		container-exists ${containerName} || err "no such container"
+		[[ ${containerName} != "base" && ${containerName} != "empty" ]] || err "container is part of overlay structure: ${containerName}"
+
+		ready && base && overlay ${containerName}
+		;;
+
+	# new container over base
+	c|create)
+		. ${include_dir}/_containers
+		. ${include_dir}/_filesystem
+		. cor.cfg
+
+		containerName="${generatedName}"
+		[[ -z $2 ]] || containerName="${2}"
+
+		container-exists ${containerName} && err "container exists"
+		ready && base && new-container ${containerName} && overlay ${containerName}
+		;;
+
+	copy)
+		. ${include_dir}/_containers
+		. ${include_dir}/_filesystem
+		. cor.cfg
+
+		# name for container to copy
+		[[ -z $2 ]] || copyName="${2}"
+
+		# new name, or generated name
+		containerName="${generatedName}"
+		[[ -z $3 ]] || containerName="${3}"
+
+		# did we get all that?
+		[[ -z ${copyName} ]] && err "expected a container to copy"
+		[[ -z ${containerName} ]] && err "expected a name for new container"
+
+		# action
+		gMsg " copy ${copyName} to ${containerName}"
+		ready && base && ${lxcBin} copy local:${copyName} local:${containerName}
+		overlay ${containerName}
+		;;
+
+	clone)
+		. ${include_dir}/_containers
+		. ${include_dir}/_filesystem
+		. cor.cfg
+
+		# name for container to copy
+		[[ -z $2 ]] || copyName="${2}"
+
+		# new name, or generated name
+		containerName="${generatedName}"
+		[[ -z $3 ]] || containerName="${3}"
+
+		# did we get all that?
+		[[ -z ${copyName} ]] && err "expected a container to clone"
+		[[ -z ${containerName} ]] && err "expected a name for new container"
+
+		# action
+		gMsg " clone ${copyName} as ${containerName} - linked overlay"
+		ready && base && ${lxcBin} copy local:${copyName} local:${containerName}
+		sudo rm -rf ${containerBase}/${containerName}/persistent_storage
+		sudo ln -s ${containerBase}/${copyName}/persistent_storage ${containerBase}/${containerName}/persistent_storage
+		overlay ${containerName}
+		;;
+
+	# delete container
+	d|del|rm|delete)
+		. ${include_dir}/_containers
+		. cor.cfg
+
+		[[ $2 ]] && containerName="${2}"
+		container-exists ${containerName} || err "no such container"
+
+		ready && delete-container ${containerName} ${3}
+		;;
+
+	# catch-all
+	*)
+		[[ ${1} ]] && ( err "unknown action: $(red ${1,,})" )
+		show-helpmsg usage
+		;;
+esac
